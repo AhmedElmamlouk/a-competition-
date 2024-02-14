@@ -1,0 +1,600 @@
+var adType, i, gptAdtype, gptPosition, network, gptSizeMap, adSlotArr, slotName, slotDiv, slotIndex, adtoRender, topLevelAdUnitsMap, gptAdUnitName, gptDefinedSizeMap;
+ii = 0;
+var value = 'skipAdLoaded';
+var cookieVal = getCookie('adStatus');
+var scrollElemId;
+var isRenderEventFired = false;
+var isBBSlotViewed = false;
+
+//Method to load All Ads in Asyn manner
+function loadAllAds(slotIndex, allAdsArr, adType, currElem) {
+    console.log("----allAdsArr---" + JSON.stringify(allAdsArr));
+    googletag.cmd.push(function() {
+        if (!isRenderEventFired) {
+            isRenderEventFired = true;
+            googletag.pubads().addEventListener('impressionViewable', function(event) {
+                var slot = event.slot;
+                //console.log("******event****"+JSON.stringify(event));
+                if (slot.getTargeting('refresh').indexOf(REFRESH_VALUE) > -1) {
+                    setTimeout(function() {
+                        // console.log("****refresh slot****"+JSON.stringify(slot));
+                        googletag.pubads().refresh([slot]);
+                    }, SECONDS_TO_WAIT_AFTER_VIEWABILITY * 1000);
+                }
+            });
+
+            googletag.pubads().addEventListener('slotRenderEnded', function(event) {
+                //console.log("------slotRenderEnded----"+JSON.stringify(event));
+                var elem = document.getElementById(event.slot.getSlotElementId());
+                var renderedAdType = elem.parentElement.dataset.adtype;
+				if(!renderedAdType) {
+					renderedAdType = elem.parentElement.parentElement.dataset.adtype; //for overlay and cat-fish
+				}
+                if (event.isEmpty) {
+                    console.log("---renderedAdType - Empty-----------" + renderedAdType);
+                    elem.classList.add("ad-rendered");
+                    elem.parentElement.classList.add("ad-rendered");
+					elem.classList.remove("activated");
+                    elem.parentElement.classList.remove("activated");
+                    if (renderedAdType == "banner450x450") { //overlay ad
+                        elem.classList.add("banner450x450")
+						if(elem.parentElement) {
+							elem.parentElement.parentElement.classList.remove("overlay_block");
+							elem.parentElement.remove();
+						}
+						
+                    } else if (renderedAdType == "banner1X2") { //catfish ad
+                        elem.classList.add("banner1X2")
+						if(elem.parentElement) {
+							elem.parentElement.parentElement.classList.remove("catfish_block");
+							elem.parentElement.remove();
+						}
+                    }
+                } else {
+                    console.log("---renderedAdType - Not Empty-----------" + renderedAdType);
+                    elem.classList.add("activated");
+                    elem.parentElement.classList.add("activated");
+					elem.classList.remove("ad-rendered");
+                    elem.parentElement.classList.remove("ad-rendered");
+                    if (renderedAdType == "banner750x450") { //intertials ad
+                        constructInterstitialPopup(elem);
+                    } else if (renderedAdType == "banner450x450") { //overlay ad
+                        let id = '#'+event.slot.getSlotElementId()+' iframe';
+						console.log("---overlay id---"+id);
+						if(jQuery(id).length > 0) {//sponsorship ad empty case
+							constructOverlay(elem, event);
+						} else {
+							console.log("---inside else---"+id);
+							elem.parentElement.remove();
+						}
+                    } else if (renderedAdType == "banner1X2") { //catfish ad
+                        constructCatfish(elem, event);
+                    }
+                }
+            });
+
+            googletag.pubads().addEventListener('slotOnload', function(event) {
+                console.log("***inside slotonload method***");
+                var elem = document.getElementById(event.slot.getSlotElementId());
+                var renderedAdType = elem.closest(".googleAds").dataset.adtype;
+                if (!event.isEmpty) {
+                    if (renderedAdType == "banner970x250") { //BB block
+                        if (enableStickyAds && !isBBSlotViewed) {
+                            var x = 1000;
+                            var y = 0;
+                            var topAdTimer;
+                            var topAdTimer = setInterval(function() {
+                                if (x <= 7000) {
+                                    var elem = document.querySelector("[data-ad-position='top']");
+                                    if (isScrolledIntoView(elem) == 1) {
+                                        x = x + 1000;
+                                    }
+                                } else {
+                                    clearInterval(topAdTimer);
+                                }
+                            }, 1000);
+
+                            var isScrolled = false;
+                            jQuery(window).scroll(function() { //sticky bb if ad is not viewed for bbViewTime
+                                //	console.log("----------Top banner viewed for----------"+x+"seconds");
+                                var offsetTop = $(window).width() <= 600 ? 350 : 400;
+                                console.log("******offsetTop****" + offsetTop);
+                                if (jQuery(window).scrollTop() <= offsetTop) {
+                                    jQuery("#adBannerSlot-1").removeClass("shadow").removeClass("bb-ad-fixed");
+                                }
+                                if (x >= bbViewTime) {
+                                    jQuery("#adBannerSlot-1").removeClass("bb-ad-fixed");
+                                } else if (jQuery(window).scrollTop() >= offsetTop && !isScrolled && x < bbViewTime) {
+                                    clearInterval(topAdTimer);
+                                    isScrolled = true;
+                                    setTimeout(function() {
+                                        if (jQuery(window).scrollTop() >= offsetTop) {
+                                            console.log("************Add inside ad-fixed***********" + jQuery(window).scrollTop() + "******" + (jQuery(window).scrollTop() >= offsetTop));
+                                            isBBSlotViewed = true;
+                                            jQuery("#adBannerSlot-1").addClass("bb-ad-fixed").addClass("shadow");
+                                        }
+                                    }, 0);
+                                    setTimeout(function() {
+                                        console.log("----------inside sticky-fade-out----------" + jQuery(window).scrollTop());
+                                        if (jQuery(window).scrollTop() >= offsetTop) {
+                                            console.log("----------Add inside sticky-fade-out----------" + jQuery(window).scrollTop());
+                                            jQuery("#adBannerSlot-1").addClass("sticky-fade-out");
+                                        }
+                                    }, bbStickyTime + 500);
+                                    setTimeout(function() {
+                                        console.log("----------remove sticky-fade-out & ad-fixed----------");
+                                        jQuery("#adBannerSlot-1").removeClass("bb-ad-fixed").removeClass("sticky-fade-out").removeClass("shadow");
+                                    }, bbStickyRemoveTime + bbStickyTime + 500);
+                                }
+                            });
+                        }
+                    } else if (renderedAdType == 'banner300x250') {
+						if(jQuery('[data-adtype="banner300x250"]').parent()) {
+							jQuery('[data-adtype="banner300x250"]').parent().stickit('destroy');
+							jQuery('[data-adtype="banner300x250"]').parent().stickit({
+								top: 135,
+								screenMinWidth: 992
+							});
+						}
+                    } else if (renderedAdType == 'banner300x600') {
+						if(jQuery('[data-adtype="banner300x600"]').parent()) {
+							jQuery('[data-adtype="banner300x600"]').parent().stickit('destroy');
+							jQuery('[data-adtype="banner300x600"]').parent().stickit({
+								top: 135,
+								screenMinWidth: 992
+							});
+						}
+                    }
+                }
+            });
+        }
+
+
+        googletag.pubads().setTargeting("parent", gptParentSect).
+        setTargeting("sub", gptSub).
+        setTargeting("sect", gptSect).
+        setTargeting("artid", gptContentId).
+        setTargeting("cat", gptKeyword).
+        setTargeting("url", gptUrl);
+        for (var a = 0; a < allAdsArr.length; a++) {
+            /*console.log("-----------gptNetwork-"+a+"-------------"+allAdsArr[a].gptNetwork);
+            console.log("-----------mobslot-"+a+"-------------"+allAdsArr[a].mobSlot);
+            console.log("-----------primarySlot-"+a+"-------------"+allAdsArr[a].primarySlot);
+            console.log("-----------slotName-"+a+"-------------"+allAdsArr[a].slotName);*/
+            gptDefinedSizeMap = getGPTSizeMapping(allAdsArr[a]);
+            //console.log("-----------gptDefinedSizeMap-"+a+"-------------"+gptDefinedSizeMap);
+            googletag.defineSlot(allAdsArr[a].gptNetwork, allAdsArr[a].primarySlot, allAdsArr[a].slotName).setTargeting('refresh', REFRESH_VALUE).defineSizeMapping(gptDefinedSizeMap).setCollapseEmptyDiv(true, true).addService(googletag.pubads());
+            //googletag.defineSlot(allAdsArr[a].gptNetwork, allAdsArr[a].primarySlot, allAdsArr[a].slotName).defineSizeMapping(gptDefinedSizeMap).addService(googletag.pubads());
+
+        }
+        //if(!slotIndex) {
+        //alert("here")
+        googletag.pubads().enableLazyLoad({
+            fetchMarginPercent: 0,
+            renderMarginPercent: 0,
+            mobileScaling: 2.0 // Double the above values on mobile, where viewports are smaller and users tend to scroll faster.
+        });
+        googletag.enableServices();
+        //}
+    });
+    //Loading ads with specified slot (i.e, ad div loaded through ajax request)
+    if (slotIndex) {
+        /*  console.log("----slotIndex---"+slotIndex);
+	  console.log("----gptAdtype---"+adType);
+	   console.log("----currElem---"+currElem);
+	   currElem.classList.add("test-"+slotIndex)*/
+        isElemFiftyPercInViewport(currElem, slotIndex, adType);
+    }
+}
+
+//Method to show interstitial ad popup
+function constructInterstitialPopup(elem) {
+    //if(!elem.parentElement.classList.contains("intertials_block") && cookieVal!= "skipAdLoaded") {
+    if (!elem.parentElement.classList.contains("intertials_block")) {
+        elem.parentElement.classList.add("intertials_block");
+        var wrap1 = document.createElement('div');
+        var wrap2 = document.createElement('div');
+        var wrap3 = document.createElement('div');
+        //document.body.style.overflowY = "hidden";
+        wrap1.className = 'intertials-header'; // Id must be the same as slotName
+        wrap2.className = 'intertials-skip-ads continue-button';
+        wrap3.className = 'logo-wrp fl am logo ps-rl';
+        wrap3.innerHTML = intertialsLogo[0];
+        wrap1.style.backgroundColor = intertialsLogo[1];
+        wrap1.appendChild(wrap3);
+        wrap1.appendChild(wrap2);
+        elem.parentElement.prepend(wrap1);
+        //timer on
+        var sec = 6;
+        var interval = setInterval(function() {
+            sec = sec - 1;
+            if (sec > 0) {
+                wrap2.innerHTML = "You can skip this ad in " + sec;
+                //wrap2.style.color = '#000';
+            } else if (sec == 0) {
+                wrap2.innerHTML = "<a id='redirectlink' class='bannerClose continue-color' style='color:#ffffff;'>Continue to Site »</a>";
+                wrap2.addEventListener("click", bannerCloseSkipAd);
+            } else if (sec == -10) {
+                bannerCloseSkipAd();
+                clearInterval(interval);
+            }
+        }, 1000);
+    } else {
+        elem.remove();
+    }
+}
+
+//Method to get the passed cookie value
+function getCookie(name) {
+    var value = "; " + document.cookie;
+    var parts = value.split("; " + name + "=");
+    if (parts.length == 2) return parts.pop().split(";").shift();
+};
+
+//Method to close ad if alreday skipped
+
+//Method to skip the ad
+function bannerCloseSkipAd() {
+    removeElement(document.querySelector(".intertials_block"));
+    /*var now = new Date();
+    var time = now.getTime();
+    time += 3600 * 500;
+    now.setTime(time);
+    document.cookie = 'adStatus=' + value + '; expires=' + now.toUTCString() + '; path=/';
+    if(cookieVal== "skipAdLoaded"){
+    	removeElement(document.querySelector(".intertials_block"));
+    }*/
+}
+
+//Method to close the ad
+function removeElement(elem) {
+    if (elem) {
+        elem.remove();
+    }
+}
+
+//Method to create overlay ad slot element
+function constructOverlaySlot(elem, slotName) {
+    if (!elem.classList.contains("overlay_block")) {
+        var linkClose = document.createElement('a');
+        linkClose.className = 'popClose';
+        linkClose.id = 'popClose';
+        linkClose.style.display = 'none';
+        var popOutWrap = document.createElement('div');
+        popOutWrap.className = 'popWrapper';
+        var linkCloseText = document.createTextNode("X");
+        linkClose.appendChild(linkCloseText);
+        elem.appendChild(popOutWrap);
+        popOutWrap.appendChild(linkClose);
+        var slotDiv = document.createElement('div');
+        slotDiv.id = slotName;
+        popOutWrap.appendChild(slotDiv);
+        linkClose.addEventListener("click", bannerCloseOverlay);
+    }
+}
+
+//Method to create catfish ad slot element
+function constructCatfishSlot(elem, slotName) {
+    if (!elem.classList.contains("catfish_block")) {
+        var linkClose = document.createElement('a');
+        linkClose.className = 'popClose';
+        linkClose.id = 'popClose';
+        linkClose.style.display = 'none';
+        var popOutWrap = document.createElement('div');
+        popOutWrap.className = 'popWrapper';
+        var linkCloseText = document.createTextNode("X");
+        linkClose.appendChild(linkCloseText);
+        elem.appendChild(popOutWrap);
+        popOutWrap.appendChild(linkClose);
+        var slotDiv = document.createElement('div');
+        slotDiv.id = slotName;
+        popOutWrap.appendChild(slotDiv);
+        linkClose.addEventListener("click", bannerCloseCatFish);
+    }
+}
+
+
+//Method to show catfish ad popup
+function constructCatfish(elem, event) {
+    elem.closest(".googleAds").style.height = "";
+    elem.closest(".googleAds").classList.add("catfish_block");
+    var popOutWrap = document.querySelector('.popWrapper');
+	elem.closest(".popClose").style.display = 'block';
+    popOutWrap.style.width = event.size[0] + 'px';
+    popOutWrap.style.height = event.size[1] + 'px';
+    popOutWrap.style.marginLeft = '-' + (event.size[0] / 2) + 'px';
+}
+
+//Method to show overlay ad popup
+function constructOverlay(elem, event) {
+    elem.closest(".googleAds").style.height = "";
+    elem.closest(".googleAds").classList.add("overlay_block");
+	document.querySelector(".popClose").classList.add("show-close");
+	document.querySelector(".popClose").style.display = 'block';
+    var popOutWrap = document.querySelector('.popWrapper');
+    popOutWrap.style.width = event.size[0] + 'px';
+    popOutWrap.style.height = event.size[1] + 'px';
+   /* popOutWrap.style.marginLeft = '-' + (event.size[0] / 2) + 'px';
+    popOutWrap.style.marginTop = '-' + (event.size[1] / 2) + 'px';*/
+    //timer on
+    var secOver = 15;
+    var interval = setInterval(function() {
+        secOver = secOver - 1;
+        if (secOver == -2) {
+            bannerCloseOverlay();
+            clearInterval(interval);
+        }
+    }, 1000);
+}
+
+function bannerCloseOverlay() {
+    removeElement(document.querySelector(".overlay_block"));
+}
+
+function bannerCloseCatFish() {
+    removeElement(document.querySelector(".catfish_block"));
+}
+
+//Method to generate google ads array with the specified slot details
+function defineAdSlots(slotIndex) {
+    var googleAdsList;
+    var isSingleElement = false;
+    if (slotIndex) {
+        googleAdsList = document.querySelectorAll('#ad-slot-' + slotIndex);
+        isSingleElement = true;
+    } else {
+        googleAdsList = document.querySelectorAll('.googleAds');
+    }
+    //console.log("---googleAdsList----"+googleAdsList.length);
+    var allAdsObj = {};
+    var allAdsArr = [];
+    topLevelAdUnitsMap = new Map(topLevelAdUnitsMappingArr);
+    for (var i = 0; i < googleAdsList.length; i++) {
+        if (googleAdsList[i].children.length === 0 || googleAdsList[i].children.length === 1) {
+            gptAdtype = googleAdsList[i].dataset.adtype;
+            if (isValidSlot(gptAdtype, googleAdsList[i])) {
+                for (var j = 0; j < adSlotArr.length; j++) {
+                    if (adSlotArr[j].name == gptAdtype) {
+                        //console.log("*****existing slotindex*****"+slotIndex);
+                        if (!isSingleElement) {
+                            slotIndex = googleAdsList[i].dataset.index;
+                            //console.log("*****new slotindex*****"+slotIndex);
+                        }
+
+                        slotName = generateNextAdSlotName(slotIndex);
+                        if (gptAdtype == "banner450x450") { //overlay
+                            constructOverlaySlot(googleAdsList[i], slotName);
+                        } else if (gptAdtype == "banner1X2") { //catfish
+                            constructCatfishSlot(googleAdsList[i], slotName);
+                        } else {
+                            //googleAdsList[i].id = slotName;
+                            slotDiv = document.createElement('div'); //creating a new div to match inter-scroller ad format
+                            slotDiv.id = slotName;
+                            googleAdsList[i].appendChild(slotDiv);
+                        }
+                        if (topLevelAdUnitsMappingArr.length > 0) {
+                            gptAdUnitName = getAdUnitName(gptSect);
+                            network = '/' + gptNetwork + '/' + gptAdUnitName + '/' + gptAdUnitName + '_' + gptAdtype;
+                        } else {
+                            network = '/' + gptNetwork;
+                        }
+                        allAdsObj = {};
+                        allAdsArr = [];
+                        allAdsObj.gptNetwork = network;
+                        allAdsObj.mobSlot = adSlotArr[j].mobSlot;
+                        allAdsObj.primarySlot = adSlotArr[j].primarySlot;
+                        allAdsObj.slotName = slotName;
+                        allAdsObj.gptAdtype = gptAdtype;
+                        allAdsArr.push(allAdsObj);
+                        if (!isSingleElement) {
+                            loadAllAds(slotIndex, allAdsArr, gptAdtype, googleAdsList[i]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (isSingleElement) {
+        loadAllAds(slotIndex, allAdsArr, gptAdtype, googleAdsList[0]);
+    }
+}
+
+function isValidSlot(gptAdtype, elem) {
+    let isValid = false;
+    if (gptAdtype == "banner750x450") { //interstitial
+        //if(cookieVal!= "skipAdLoaded") {
+        isValid = true;
+        //}
+    } else if (gptAdtype == "banner300x250") {
+        let isMobile = isMobileDevice();
+        if (!isMobile) {
+            if (elem.classList.contains("only-mob")) {
+                isValid = false;
+            } else {
+                isValid = true;
+            }
+        } else {
+            if (elem.classList.contains("not-mob")) {
+                isValid = false;
+            } else {
+                isValid = true;
+            }
+        }
+    } else {
+        isValid = true;
+    }
+    return isValid;
+}
+
+//Method to get the unit name for gpt network url sonstruction
+function getAdUnitName(key) {
+    console.log("*******Page key**********" + key);
+    let adUnitName = topLevelAdUnitsMap.get(key);
+    console.log("*******adUnitName**********" + adUnitName);
+    if (!adUnitName) {
+        adUnitName = topLevelAdUnitsMap.get('default');
+        console.log("*******adUnitName ifff**********" + adUnitName);
+    }
+    return gptPrefix + '_' + adUnitName;
+}
+
+//Method to generate GPT size map array for responsive design
+function getGPTSizeMapping(adArr) {
+    return googletag.sizeMapping()
+        .addSize([992, 0], adArr.primarySlot)
+        .addSize([200, 0], adArr.mobSlot)
+        .addSize([0, 0], adArr.primarySlot)
+        .build();
+}
+
+var nextAdSlotId = 1;
+var id = 0;
+//Method to generate id dynamcially for each slots
+function generateNextAdSlotName(slotIndex) {
+    if (slotIndex) {
+        id = slotIndex;
+    } else {
+        id = nextAdSlotId++;
+    }
+    console.log("-----generateNextSlotName slotName slotIndex id-----" + id);
+    return 'adBannerSlot-' + id;
+}
+
+//Method to get the id name for dynamic ad slots
+function getPositionName(index) {
+    return 'adBannerSlot-' + index;
+}
+
+var inx = 1;
+//Method to generate dynamic slot id
+function getNextPositionIndex() {
+    return inx++;
+}
+
+//Method to init all ad slots on script loaded
+//defineAdSlots(slotIndex);
+
+// is visible in viewport
+function isScrolledIntoView(elem) {
+    if (elem) {
+        var rect = elem.getBoundingClientRect();
+        return (
+            rect.top + (rect.height / 2) > 0 &&
+            rect.top + (rect.height / 2) < (window.innerHeight || document.documentElement.clientHeight)
+        );
+    }
+}
+
+//Method to init ad display only if it is fifty percent on viewport
+function isElemFiftyPercInViewport(elem, slotIndex, gptAdtype) {
+    //console.log("****elem****"+elem+"**slotIndex***"+slotIndex+"***gptAdtype***"+gptAdtype)
+    let elemInView = isElemAvailableinViewport(elem, slotIndex, gptAdtype);
+    //console.log("****elemInView****"+elemInView+"**gptAdtype***")
+    if (!elemInView) {
+        document.addEventListener('scroll', function(e) {
+            elemInView = isElemAvailableinViewport(elem, slotIndex, gptAdtype);
+            //console.log("****elemInView scroll****"+elemInView+"**gptAdtype***"+gptAdtype)
+            if (elemInView) {
+                //console.log("$$$$$showing in slotIndex$$$$$$$$$"+slotIndex+"***"+gptAdtype)
+                googletag.cmd.push(function() {
+                    googletag.display(getPositionName(slotIndex));
+                })
+            }
+        });
+    } else {
+        //console.log("$$$$$showing out slotIndex$$$$$$$$$"+slotIndex+"***"+gptAdtype)
+        googletag.cmd.push(function() {
+            googletag.display(getPositionName(slotIndex));
+        });
+    }
+}
+
+//Method to check whether it is a mobiel device or not
+function isMobileDevice() {
+    let isMobile = window.matchMedia('(max-width: 767px)');
+    return isMobile.matches;
+}
+
+//Method to get ad slot height based on the ad type
+function getSlotHeight(adType) {
+    let isMobile = isMobileDevice();
+    let slotHeight = 0;
+    if (adType == "banner728x90") {
+        slotHeight = 90;
+    } else if (adType == "banner300x600") {
+        slotHeight = 600;
+    } else if (adType == "banner300x250") {
+        slotHeight = 250;
+    } else if (adType == "inread1") {
+        slotHeight = isMobile ? 500 : 400;
+    } else if (adType == "inread2") {
+        slotHeight = isMobile ? 251 : 251;
+    } else if (adType == "inread3") {
+        slotHeight = isMobile ? 253 : 253;
+    } else if (adType == "inread4") {
+        slotHeight = isMobile ? 252 : 252;
+    } else if (adType == "inread5") {
+        slotHeight = isMobile ? 252 : 252;
+    }
+    return slotHeight;
+}
+
+//Method to check if the element is 50% in viewport
+function isElemAvailableinViewport(elem, slotIndex, gptAdtype) {
+    let adHeight = getSlotHeight(gptAdtype);
+    //console.log("****"+gptAdtype+"*****"+adHeight);
+    if (isPageScrolledtoBottom()) {
+        console.log("***********Page is scrolled to the bottom - loading all ads*************");
+        return true;
+    } else if (adHeight != 0) {
+        if (elem) {
+            let elemVisiblePercentage = calculateVisibilityForDiv(slotIndex, elem, gptAdtype);
+            //console.log("*******"+gptAdtype+"**elemVisiblePercentage****"+elemVisiblePercentage)
+            if (elemVisiblePercentage >= 50) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+    } else {
+        return true;
+    }
+}
+
+function isPageScrolledtoBottom() {
+    //if (jQuery(window).scrollTop() + jQuery(window).height() == jQuery(document).height()) {
+	if(jQuery(window).scrollTop() + 100 > jQuery(document).height() - jQuery(window).height() ){
+        return true;
+    } else {
+        return false;
+    }
+}
+
+function calculateVisibilityForDiv(slotIndex, div$, gptAdtype) {
+    let adHeight = getSlotHeight(gptAdtype);
+    /*var windowHeight = window.innerHeight,
+    	docScroll = document.scrollTop,
+    	divPosition = document.getElementById("ad-slot-"+slotIndex).offsetTop,*/
+    var windowHeight = jQuery(window).height(),
+        docScroll = jQuery(document).scrollTop(),
+        divPosition = jQuery("#ad-slot-" + slotIndex).offset().top,
+        divHeight = adHeight,
+        hiddenBefore = docScroll - divPosition,
+        hiddenAfter = (divPosition + divHeight) - (docScroll + windowHeight);
+    if ((docScroll > divPosition + divHeight) || (divPosition > docScroll + windowHeight)) {
+        return 0;
+    } else {
+        var result = 100;
+        if (hiddenBefore > 0) {
+            result -= (hiddenBefore * 100) / divHeight;
+        }
+        if (hiddenAfter > 0) {
+            result -= (hiddenAfter * 100) / divHeight;
+        }
+        return result;
+    }
+}
+
+window.addEventListener('load', function (){
+    defineAdSlots(0)
+});
